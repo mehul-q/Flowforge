@@ -8,6 +8,7 @@ export interface Step {
   attempt_count: number;
   locked_by: string | null;
   locked_until: Date | null;
+  idempotency_key: string | null;
   updated_at: Date;
 }
 
