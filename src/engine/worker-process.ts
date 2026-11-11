@@ -7,7 +7,8 @@ import { failpoint } from './failpoint';
 const workerId = process.argv[2] || 'worker-unknown';
 
 const pool = new Pool({
-  connectionString: 'postgresql://flowforge:flowforge@localhost:5432/flowforge',
+  connectionString: process.env.DATABASE_URL
+    ?? 'postgresql://flowforge:flowforge@postgres:5432/flowforge',
   max: 5,
 });
 
@@ -16,14 +17,13 @@ async function loop(): Promise<void> {
     let step;
     try {
       step = await claimStep(pool, workerId);
-    } catch (e) {
-      console.error(`[${workerId}] claim error:`, (e as Error).message);
-      await new Promise(r => setTimeout(r, 100));
+    } catch (e: any) {
+      console.error(`[${workerId}] claim error:`, JSON.stringify(e, null, 2));
+      await new Promise(r => setTimeout(r, 200));
       continue;
     }
 
     if (!step) {
-      // No work available; wait and try again
       await new Promise(r => setTimeout(r, 100));
       continue;
     }
@@ -46,8 +46,8 @@ async function loop(): Promise<void> {
       if (rowCount === 0) {
         console.log(`[${workerId}] lease lost for ${step.id} (effect safe, result discarded)`);
       }
-    } catch (e) {
-      console.error(`[${workerId}] step error:`, (e as Error).message);
+    } catch (e: any) {
+      console.error(`[${workerId}] step error:`, JSON.stringify(e, null, 2));
       await pool.query(`
         UPDATE steps SET
           status='FAILED', locked_by=NULL, locked_until=NULL, updated_at=now()

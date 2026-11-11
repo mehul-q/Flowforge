@@ -1,0 +1,19 @@
+CREATE TABLE IF NOT EXISTS runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  input JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS provider_effects (
+  idempotency_key TEXT PRIMARY KEY,
+  calls INT NOT NULL DEFAULT 0,
+  effects INT NOT NULL DEFAULT 0,
+  result JSONB
+);
+
+ALTER TABLE steps ADD COLUMN IF NOT EXISTS input JSONB;
+ALTER TABLE steps ADD COLUMN IF NOT EXISTS depends_on TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE steps ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
