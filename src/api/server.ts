@@ -2,8 +2,10 @@ import express from 'express';
 import { Pool } from 'pg';
 import { requireAuth, requireAdmin, signToken } from './auth';
 import { createRun } from './workflow-runner';
+import cors from 'cors';
 
 const app = express();
+app.use(cors()); // Allow all origins (for local dev)
 app.use(express.json());
 
 const pool = new Pool({
