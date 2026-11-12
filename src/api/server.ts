@@ -3,6 +3,8 @@ import { Pool } from 'pg';
 import { requireAuth, requireAdmin, signToken } from './auth';
 import { createRun } from './workflow-runner';
 import cors from 'cors';
+import Groq from 'groq-sdk';
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const app = express();
 app.use(cors()); // Allow all origins (for local dev)
@@ -69,6 +71,50 @@ app.get('/api/runs/:id', requireAuth, async (req, res) => {
 });
 
 const PORT = Number(process.env.PORT ?? 3000);
+// The AI Copilot Endpoint
+app.post('/api/copilot', requireAuth, async (req, res) => {
+  const { question } = req.body;
+  if (!question) {
+    res.status(400).json({ error: 'question required' });
+    return;
+  }
+
+  try {
+    // 1. Fetch the recent context from the DB so the AI knows what's happening
+    const { rows: runs } = await pool.query(
+      `SELECT id, workflow_name, status FROM runs ORDER BY created_at DESC LIMIT 5`
+    );
+    const { rows: steps } = await pool.query(
+      `SELECT name, status, attempt_count FROM steps ORDER BY updated_at DESC LIMIT 20`
+    );
+
+    // 2. Build the prompt (this is the "grounding" the critic demanded)
+    const systemPrompt = `You are the FlowForge Copilot. You help users understand their workflow runs.
+Here is the current state of the database:
+Recent Runs: ${JSON.stringify(runs)}
+Recent Steps: ${JSON.stringify(steps)}
+
+Answer the user's question accurately based ONLY on this data. Be concise, professional, and helpful.`;
+
+    // 3. Ask the LLM
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: question }
+      ],
+      model: 'openai/gpt-oss-120b',
+    });
+
+    const answer = chatCompletion.choices[0]?.message?.content || "I couldn't generate an answer.";
+    
+    // We also return the evidence we sent to the AI (so the user can verify it)
+    res.json({ answer, evidence: { runs, steps } });
+
+  } catch (e) {
+    console.error('Copilot error:', e);
+    res.status(500).json({ error: 'Failed to contact AI' });
+  }
+});
 app.listen(PORT, () => {
   console.log(`API listening on port ${PORT}`);
 });

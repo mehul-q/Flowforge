@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// We will store the token in state. 
-// In a real app, you'd log in, but for now we just get a dev token.
 const API_URL = 'http://localhost:3000';
 
 function App() {
@@ -11,6 +9,12 @@ function App() {
   const [selectedRun, setSelectedRun] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
+  // Copilot state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [chatHistory, setChatHistory] = useState<{role: string, text: string}[]>([]);
+  const [asking, setAsking] = useState(false);
+
   // 1. Get a token when the app loads
   useEffect(() => {
     axios.post(`${API_URL}/auth/dev-token`, { role: 'admin' })
@@ -18,8 +22,7 @@ function App() {
       .catch(err => console.error("Failed to get token", err));
   }, []);
 
-  // 2. Fetch runs (this is a mock function since we don't have a GET /api/runs endpoint yet)
-  // For now, we will just let the user create a new run and track it.
+  // 2. Create a new workflow run
   const createRun = async () => {
     if (!token) return;
     setLoading(true);
@@ -50,7 +53,14 @@ function App() {
         const res = await axios.get(`${API_URL}/api/runs/${selectedRun}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setRuns(prev => prev.map(r => r.id === selectedRun ? res.data.run : r));
+                setRuns((prev: any) => {
+           const updated = [...prev];
+           const index = updated.findIndex(r => r.id === selectedRun);
+           if (index !== -1) {
+             updated[index] = { ...updated[index], ...res.data.run, steps: res.data.steps };
+           }
+           return updated;
+        });
         // We store the steps locally just for the UI
         setRuns((prev: any) => {
            const updated = [...prev];
@@ -65,6 +75,26 @@ function App() {
 
     return () => clearInterval(interval);
   }, [selectedRun, token]);
+
+  // 4. Ask the Copilot
+  const askCopilot = async () => {
+    if (!question || !token) return;
+    const q = question;
+    setQuestion("");
+    setChatHistory(prev => [...prev, { role: 'user', text: q }]);
+    setAsking(true);
+
+    try {
+      const res = await axios.post(`${API_URL}/api/copilot`, 
+        { question: q },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setChatHistory(prev => [...prev, { role: 'ai', text: res.data.answer }]);
+    } catch (err) {
+      setChatHistory(prev => [...prev, { role: 'ai', text: "Error connecting to AI. Check your Groq API key." }]);
+    }
+    setAsking(false);
+  };
 
   const activeRun = runs.find(r => r.id === selectedRun);
 
@@ -156,6 +186,64 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* --- AI COPILOT UI STARTS HERE --- */}
+      
+      {/* Floating Chat Button */}
+      <button
+        onClick={() => setChatOpen(!chatOpen)}
+        className="fixed bottom-6 right-6 bg-purple-600 hover:bg-purple-700 text-white rounded-full p-4 shadow-lg transition-transform hover:scale-105 z-50"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+      </button>
+
+      {/* Chat Window */}
+      {chatOpen && (
+        <div className="fixed bottom-24 right-6 w-96 h-[500px] bg-gray-800 rounded-xl shadow-2xl flex flex-col border border-gray-700 z-50 overflow-hidden">
+          <div className="bg-gray-900 p-4 border-b border-gray-700 flex justify-between items-center">
+            <h3 className="font-bold text-purple-400">AI Copilot</h3>
+            <button onClick={() => setChatOpen(false)} className="text-gray-400 hover:text-white">✕</button>
+          </div>
+          
+          <div className="flex-1 p-4 overflow-y-auto space-y-4">
+            {chatHistory.length === 0 && (
+              <p className="text-gray-500 text-sm text-center mt-10">
+                Ask me about your workflows!<br/><br/>
+                Try: "Did any steps fail?"<br/>or "What is the status of my runs?"
+              </p>
+            )}
+            {chatHistory.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] p-3 rounded-lg text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {asking && <div className="text-gray-400 text-sm animate-pulse">Copilot is thinking...</div>}
+          </div>
+
+          <div className="p-4 border-t border-gray-700 bg-gray-900">
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={question}
+                onChange={e => setQuestion(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && askCopilot()}
+                placeholder="Ask about your runs..."
+                className="flex-1 bg-gray-800 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <button
+                onClick={askCopilot}
+                disabled={asking || !question}
+                className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

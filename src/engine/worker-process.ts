@@ -7,8 +7,8 @@ import { failpoint } from './failpoint';
 const workerId = process.argv[2] || 'worker-unknown';
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
-    ?? 'postgresql://flowforge:flowforge@postgres:5432/flowforge',
+    connectionString: process.env.DATABASE_URL
+    ?? 'postgresql://flowforge:flowforge@localhost:5432/flowforge',
   max: 5,
 });
 
@@ -28,7 +28,7 @@ async function loop(): Promise<void> {
       continue;
     }
 
-    failpoint('after_claim');
+           failpoint('after_claim');
 
     try {
       await runIdempotentEffect(pool, step.idempotency_key ?? step.id, async () => {
@@ -45,6 +45,21 @@ async function loop(): Promise<void> {
 
       if (rowCount === 0) {
         console.log(`[${workerId}] lease lost for ${step.id} (effect safe, result discarded)`);
+      }
+            // Check if the entire run is finished
+      const { rows: runCheck } = await pool.query(`
+        SELECT COUNT(*) AS total, 
+               COUNT(*) FILTER (WHERE status = 'SUCCEEDED') AS succeeded,
+               COUNT(*) FILTER (WHERE status = 'FAILED') AS failed
+        FROM steps WHERE run_id = $1`, 
+        [step.run_id]
+      );
+      
+      const { total, succeeded, failed } = runCheck[0];
+      if (Number(total) === Number(succeeded)) {
+        await pool.query(`UPDATE runs SET status='SUCCEEDED', updated_at=now() WHERE id=$1`, [step.run_id]);
+      } else if (Number(failed) > 0) {
+        await pool.query(`UPDATE runs SET status='FAILED', updated_at=now() WHERE id=$1`, [step.run_id]);
       }
     } catch (e: any) {
       console.error(`[${workerId}] step error:`, JSON.stringify(e, null, 2));

@@ -22,6 +22,7 @@ services:
       DATABASE_URL: postgresql://flowforge:flowforge@postgres:5432/flowforge
       JWT_SECRET: dev-secret-at-least-32-characters-long
       PORT: 3000
+      GROQ_API_KEY: "Groq api key"
     ports:
       - "3000:3000"
     depends_on:

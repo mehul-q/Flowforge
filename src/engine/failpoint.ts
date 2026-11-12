@@ -1,9 +1,13 @@
 export function failpoint(name: string): void {
-  const enabled = (process.env.FAILPOINTS ?? '').split(',').includes(name);
-  if (!enabled) return;
+  const enabledList = process.env.FAILPOINTS ?? '';
+  const isEnabled = enabledList.split(',').map(s => s.trim()).includes(name);
+  
+  if (!isEnabled) return;
+
   const p = Number(process.env.FAILPOINT_P ?? '0.1');
+  
   if (Math.random() < p) {
-    console.log(`FAILPOINT: ${name} at ${new Date().toISOString()}`);
-    process.kill(process.pid, 'SIGKILL');
+    console.log(`FAILPOINT TRIGGERED: ${name}`);
+    process.exit(1); 
   }
 }
