@@ -115,6 +115,72 @@ Answer the user's question accurately based ONLY on this data. Be concise, profe
     res.status(500).json({ error: 'Failed to contact AI' });
   }
 });
+// 1. Get all FAILED steps (The Dead Letter Queue)
+app.get('/api/dlq', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, run_id, name, status, attempt_count, updated_at 
+      FROM steps 
+      WHERE status = 'FAILED' 
+      ORDER BY updated_at DESC
+    `);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// 2. Retry a FAILED step
+app.post('/api/dlq/:id/retry', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(`
+      UPDATE steps 
+      SET status = 'QUEUED', locked_by = NULL, locked_until = NULL, updated_at = now()
+      WHERE id = $1 AND status = 'FAILED'
+    `, [req.params.id]);
+
+    if (rowCount === 0) {
+      res.status(404).json({ error: 'Step not found or is not FAILED' });
+      return;
+    }
+    res.json({ success: true, message: 'Step re-queued for retry' });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+// 1. Get all FAILED steps (The Dead Letter Queue)
+app.get('/api/dlq', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, run_id, name, status, attempt_count, updated_at 
+      FROM steps 
+      WHERE status = 'FAILED' 
+      ORDER BY updated_at DESC
+    `);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// 2. Retry a FAILED step
+app.post('/api/dlq/:id/retry', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(`
+      UPDATE steps 
+      SET status = 'QUEUED', locked_by = NULL, locked_until = NULL, updated_at = now()
+      WHERE id = $1 AND status = 'FAILED'
+    `, [req.params.id]);
+
+    if (rowCount === 0) {
+      res.status(404).json({ error: 'Step not found or is not FAILED' });
+      return;
+    }
+    res.json({ success: true, message: 'Step re-queued for retry' });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
 app.listen(PORT, () => {
   console.log(`API listening on port ${PORT}`);
 });
